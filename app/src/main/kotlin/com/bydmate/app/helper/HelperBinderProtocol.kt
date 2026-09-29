@@ -71,10 +71,8 @@ import android.os.IBinder
  * status/value carry the raw autoservice transact result (see HelperDaemon).
  */
 object HelperBinderProtocol {
-    // Fork: its own daemon name, so it never finds, reuses or kills the original app's daemon.
-    // Not a superstring of "bydmate_helper": the original greps `service list` by substring.
-    const val SERVICE_NAME = "bydmatefork_helper"
-    const val PROCESS_NAME = "bydmatefork_helper"   // app_process --nice-name + ps lookup
+    const val SERVICE_NAME = "bydmate_helper"
+    const val PROCESS_NAME = "bydmate_helper"   // app_process --nice-name + ps lookup
     const val DESCRIPTOR = "com.bydmate.app.helper.IHelper"
 
     /**

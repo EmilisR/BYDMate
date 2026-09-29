@@ -204,6 +204,13 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
         }
     }
 
+    /** True when an enabled rule binds a steering key; read from the DB (the cache may lag at start). */
+    suspend fun hasSteeringKeyBindings(): Boolean = ruleDao.getEnabled().any { rule ->
+        TriggerDef.listFromJson(rule.triggers).any {
+            it.kind == TRIGGER_KIND_STEERING_KEY && (it.value.toIntOrNull() ?: 0) > 0
+        }
+    }
+
     // One line for the diagnostics dump (#177).
     fun serviceStartDumpLine(): String =
         "service_start: interactive=${interactiveProvider()} fired=${serviceStartFiredAt != null}"

@@ -70,6 +70,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -793,6 +795,13 @@ class TrackingService : Service(), LocationListener {
         // boot-time race, so we verify-and-retry here (in its own coroutine, independent of the
         // helper bootstrap above) and re-run on every SCREEN_ON / USER_PRESENT.
         serviceScope.launch { ensureStarServiceRunning("startup") }
+        // A rule that newly binds a steering key needs the key service bound right away.
+        serviceScope.launch {
+            automationEngine.steeringKeyCodes
+                .map { it.isNotEmpty() }
+                .distinctUntilChanged()
+                .collect { bound -> if (bound) ensureStarServiceRunning("steering_key_rules") }
+        }
         serviceScope.launch { notificationListenerGrant.ensure("startup") }
         // READ_LOGS lands in this process' gids only on the NEXT app start, so granting early
         // (service start, not first recorder use) minimizes the window where the log recorder
@@ -2051,7 +2060,10 @@ class TrackingService : Service(), LocationListener {
         val knobEnabled = prefs.getBoolean(ClusterProjectionManager.KEY_KNOB_PLAY_PAUSE, false)
         // HUD guidance also reads Navigator via this a11y service; gate on CONFIRMED
         // support, not the raw pref, so unsupported cars stay untouched (Codex fix 1).
-        if (!mirrorEnabled && !voiceEnabled && !knobEnabled && !hudController.requiresA11y()) return
+        // Automation rules bound to a steering key (short or long press) are filtered by the same
+        // service: without it bound the key neither fires the rule nor loses its native action.
+        val keyRules = automationEngine.hasSteeringKeyBindings()
+        if (!mirrorEnabled && !voiceEnabled && !knobEnabled && !keyRules && !hudController.requiresA11y()) return
         starGrant.ensure(reason)
         // Android 10 (DiLink 3.0/4.0): once our process died while bound, AccessibilityManagerService
         // parks the component in mBindingServices and skips it on every settings rewrite until a

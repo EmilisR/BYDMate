@@ -47,24 +47,24 @@ The defaults are `1 = on, 2 = off`.
 3. Open the car's own settings page to confirm the switch actually changed.
    If it didn't, put `0` in **Raw value** and try again.
 
-## Install (sideload), side by side with the original
+## Install (sideload), replacing the original
 
-The fork has its own package (`com.bydmate.fork`), launcher name
-(**BYDMate Fork**) and its own helper daemon (`bydmatefork_helper`), so it
-installs **next to** the original BYDMate. The original stays untouched.
+The fork uses the original package (`com.bydmate.app`) but is signed with the
+fork's own key, so Android won't install it as an update over upstream BYDMate.
 
-1. Download the APK from
-   [Releases → latest-apk](../../releases/tag/latest-apk) and install it the
-   way you installed BYDMate (USB / ADB).
-2. Open it and go through setup like the first time. It needs its own
-   wireless-debugging authorization and permissions.
-3. Optional: export a backup from the original and restore it in the fork.
+1. Back up: Settings → Configuration → Save configuration (tick all parts).
+   The zip goes to Download.
+2. Uninstall the installed BYDMate (and "BYDMate Fork" if you had it).
+3. Download the APK from
+   [Releases → latest-apk](../../releases/tag/latest-apk) and install it.
+4. Go through setup, then Settings → Configuration → Restore config → pick the zip.
 
-Running both at once works, but don't enable the same feature in both apps
-(steering-key bindings, floating widget, cluster projection, voice button,
-the same automation rules). They would both react. Use the fork for the new
-rules and turn those features off in one of the two.
+The in-app update check follows this fork's releases, not upstream. Each push
+to `main` or `fork/**` builds a new APK signed with the same key, so later
+fork builds install as updates.
 
-Each push to `main` or `fork/**` builds a new signed APK through the
-*Build APK* workflow. Every build uses the same key, so it installs as an
-update to the previous fork build.
+## Steering keys
+
+A rule bound to a steering key now keeps the key service running on its own.
+Before this fix it only ran when cluster projection, voice or the knob feature
+was on, so bound keys silently stopped working after the car was switched off.

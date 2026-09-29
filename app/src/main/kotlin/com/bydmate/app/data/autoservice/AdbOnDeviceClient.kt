@@ -305,6 +305,6 @@ class AdbOnDeviceClientImpl @Inject constructor(
 
         // Helper daemon — hardcoded so neither caller can inject paths/cmdlines.
         private const val HELPER_PROCESS_NAME = com.bydmate.app.helper.HelperBinderProtocol.PROCESS_NAME
-        private const val HELPER_LOG_PATH = "/data/local/tmp/bydmatefork_helper.log"
+        private const val HELPER_LOG_PATH = "/data/local/tmp/bydmate_helper.log"
     }
 }

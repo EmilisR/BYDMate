@@ -24,8 +24,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        // Fork: own package so it installs next to the original BYDMate.
-        applicationId = "com.bydmate.fork"
+        applicationId = "com.bydmate.app"
         minSdk = 29
         // targetSdk 29 matches TripInfo — grants full legacy file access
         // on DiLink Android 12 (requestLegacyExternalStorage works).
@@ -66,7 +65,7 @@ android {
         val variant = this
         variant.outputs.all {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
-            output.outputFileName = "BYDMate-Fork-v${variant.versionName}.apk"
+            output.outputFileName = "BYDMate-v${variant.versionName}.apk"
         }
     }
 
