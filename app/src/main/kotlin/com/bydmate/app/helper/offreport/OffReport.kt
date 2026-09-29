@@ -90,7 +90,7 @@ internal object OffReport {
     const val PENDING_BACKOFF_FIRST_MS = 30_000L
     const val PENDING_BACKOFF_MAX_MS = 15 * 60_000L
 
-    private const val PENDING_DIR = "/data/local/tmp/bydmate_offreport"
+    private const val PENDING_DIR = "/data/local/tmp/bydmatefork_offreport"
     private const val TELEGRAM_HOST = "api.telegram.org"
 
     /** Drop reasons in the log when the epoch moved. */
