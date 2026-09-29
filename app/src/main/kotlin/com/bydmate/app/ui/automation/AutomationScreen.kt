@@ -200,6 +200,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.time.ZoneId
 import com.bydmate.app.data.automation.ActionDispatcher
+import com.bydmate.app.data.automation.LongPress
+import com.bydmate.app.data.automation.VehicleSwitchCatalog
+import com.bydmate.app.data.automation.WebhookAction
 import com.bydmate.app.data.automation.ScheduleSpec
 import com.bydmate.app.data.automation.minuteToHHmm
 import com.bydmate.app.data.local.entity.ActionDef
@@ -2326,6 +2329,16 @@ private fun ButtonPressTriggerControls(
             },
         )
         ButtonIconPicker(buttonNumber = current)
+        LongPressChip(trigger, onUpdate)
+    }
+}
+
+/** «Долгое нажатие»: the trigger fires on a hold instead of a tap ([LongPress]). */
+@Composable
+private fun LongPressChip(trigger: TriggerDef, onUpdate: (TriggerDef) -> Unit) {
+    val long = LongPress.of(trigger)
+    StateChip(stringResource(R.string.automation_trigger_long_press), selected = long) {
+        onUpdate(LongPress.set(trigger, !long))
     }
 }
 
@@ -2419,22 +2432,25 @@ private fun SteeringKeyTriggerControls(
     val context = LocalContext.current
     var learning by remember { mutableStateOf(false) }
     val code = trigger.value.toIntOrNull() ?: 0
-    Box(
-        modifier = Modifier
-            .minimumInteractiveComponentSize()
-            .heightIn(min = FIELD_HEIGHT)
-            .clip(FIELD_SHAPE)
-            .background(CardSurface)
-            .border(if (highlight) 1.5.dp else 1.dp, if (highlight) AccentOrange else CardBorder, FIELD_SHAPE)
-            .clickable { learning = true }
-            .padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            if (code > 0) "${steeringKeyLabel(context, code)} ($code)"
-            else stringResource(R.string.automation_trigger_steering_key_assign),
-            fontSize = EDITOR_TEXT, color = AccentGreen, fontWeight = FontWeight.Bold,
-        )
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Box(
+            modifier = Modifier
+                .minimumInteractiveComponentSize()
+                .heightIn(min = FIELD_HEIGHT)
+                .clip(FIELD_SHAPE)
+                .background(CardSurface)
+                .border(if (highlight) 1.5.dp else 1.dp, if (highlight) AccentOrange else CardBorder, FIELD_SHAPE)
+                .clickable { learning = true }
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (code > 0) "${steeringKeyLabel(context, code)} ($code)"
+                else stringResource(R.string.automation_trigger_steering_key_assign),
+                fontSize = EDITOR_TEXT, color = AccentGreen, fontWeight = FontWeight.Bold,
+            )
+        }
+        LongPressChip(trigger, onUpdate)
     }
 
     if (learning) {
@@ -2525,7 +2541,8 @@ private fun ActionRow(
         // Param actions send their command; toggle actions go through the dispatcher so the
         // target is flipped from the live state. Result is shown via Toast + logcat line.
         val testable = (action.kind == "param" && action.command.isNotBlank()) ||
-            (action.kind == "toggle" && !action.payload.isNullOrBlank())
+            (action.kind == "toggle" && !action.payload.isNullOrBlank()) ||
+            action.kind == VehicleSwitchCatalog.KIND || action.kind == WebhookAction.KIND
         if (testable) {
             IconButton(onClick = { onTest(action) }, modifier = Modifier.size(MIN_TOUCH)) {
                 Box(
@@ -2581,6 +2598,10 @@ private fun ActionRow(
                     SplitScreenActionControls(action = action, onUpdate = onUpdate, modifier = fill)
                 "split_screen_close", "split_screen_toggle" ->
                     SplitScreenStateActionControls(kind = action.kind, modifier = fill)
+                VehicleSwitchCatalog.KIND ->
+                    VehicleSwitchActionControls(action = action, onUpdate = onUpdate, modifier = fill)
+                WebhookAction.KIND ->
+                    WebhookActionControls(action = action, onUpdate = onUpdate, modifier = fill)
                 TELEGRAM_REPORT_KIND ->
                     TelegramReportActionControls(
                         action = action, tgBotConnected = tgBotConnected, onUpdate = onUpdate, modifier = fill,
@@ -3028,6 +3049,10 @@ private fun pickerSections(): List<PickerSection> {
                 PickerTile(lc.getString(R.string.automation_action_call)) { newCallAction(it) },
                 PickerTile(lc.getString(R.string.automation_action_navigate)) { newNavigateAction(it) },
                 PickerTile(lc.getString(R.string.automation_action_url)) { newUrlAction(it) },
+                PickerTile(lc.getString(R.string.automation_action_webhook)) { newWebhookAction(it) },
+            )),
+            PickerSection(lc.getString(R.string.auto_ui_section_adas), listOf(
+                PickerTile(lc.getString(R.string.automation_action_vehicle_switch)) { newVehicleSwitchAction(it) },
             )),
             PickerSection(lc.getString(R.string.auto_ui_section_screen), listOf(
                 PickerTile(lc.getString(R.string.automation_action_cluster_projection)) { newClusterAction(it) },
@@ -4880,5 +4905,215 @@ private fun newScheduleTrigger(): TriggerDef {
         value = spec.toJson(),
         displayName = "${minuteToHHmm(spec.fromMinute)}-${minuteToHHmm(spec.toMinute)}",
         kind = "time_range"
+    )
+}
+
+// --- ADAS / CPD switch Action Controls ---
+
+/**
+ * One [VehicleSwitchCatalog] switch: the switch by section, then on/off (or the levels of a
+ * LEVEL entry), and a raw value that overrides both for a car whose encoding differs. "Run now"
+ * on the row shows the status readback, which is how the right raw value is found.
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun VehicleSwitchActionControls(
+    action: ActionDef,
+    onUpdate: (ActionDef) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val entries = VehicleSwitchCatalog.ENTRIES
+    val request = VehicleSwitchCatalog.parse(action.payload)
+    val entry = VehicleSwitchCatalog.find(request?.id)
+    fun update(r: VehicleSwitchCatalog.Request) = onUpdate(
+        action.copy(
+            payload = VehicleSwitchCatalog.payload(r.id, r.on, r.raw),
+            displayName = VehicleSwitchCatalog.displayName(r),
+        )
+    )
+    var rawText by remember(request?.id) { mutableStateOf(request?.raw?.toString() ?: "") }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        CatalogDropdown(
+            selected = entry?.label ?: "",
+            items = entries.map { it.label },
+            categories = entries.map { it.group },
+            placeholder = stringResource(R.string.automation_vehicle_switch_pick),
+            modifier = Modifier.fillMaxWidth(),
+            onSelect = { i ->
+                val e = entries[i]
+                rawText = ""
+                val level = if (e.type == VehicleSwitchCatalog.Type.LEVEL) e.levels.firstOrNull() else null
+                update(VehicleSwitchCatalog.Request(e.id, on = false, raw = level))
+            },
+        )
+        if (entry != null && request != null) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (entry.type == VehicleSwitchCatalog.Type.SWITCH) {
+                    StateChip(stringResource(R.string.automation_vehicle_switch_on), selected = request.on && request.raw == null) {
+                        rawText = ""
+                        update(request.copy(on = true, raw = null))
+                    }
+                    StateChip(stringResource(R.string.automation_vehicle_switch_off), selected = !request.on && request.raw == null) {
+                        rawText = ""
+                        update(request.copy(on = false, raw = null))
+                    }
+                } else {
+                    entry.levels.forEach { level ->
+                        StateChip(level.toString(), selected = request.raw == level) {
+                            rawText = level.toString()
+                            update(request.copy(raw = level))
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = rawText,
+                    onValueChange = { t ->
+                        rawText = t.filter { c -> c.isDigit() || c == '-' }.take(6)
+                        update(request.copy(raw = rawText.toIntOrNull()))
+                    },
+                    label = { Text(stringResource(R.string.automation_vehicle_switch_raw)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.width(150.dp),
+                )
+            }
+            if (entry.safetyCritical) {
+                Text(stringResource(R.string.automation_vehicle_switch_critical), fontSize = 13.sp, color = AccentOrange)
+            }
+        }
+    }
+}
+
+// --- Webhook Action Controls ---
+
+@Composable
+private fun WebhookActionControls(
+    action: ActionDef,
+    onUpdate: (ActionDef) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var editing by remember { mutableStateOf(false) }
+    val spec = WebhookAction.parse(action.payload) ?: WebhookAction.Spec("", "POST", "", "")
+    val preview = if (spec.url.isNotBlank()) "${spec.method} ${spec.url}"
+        else stringResource(R.string.automation_webhook_tap_to_set)
+
+    Row(
+        modifier = modifier
+            .background(CardSurface, RoundedCornerShape(6.dp))
+            .border(1.dp, CardBorder, RoundedCornerShape(6.dp))
+            .clickable { editing = true }
+            .heightIn(min = FIELD_HEIGHT)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Link, contentDescription = null, tint = AccentTeal, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = preview,
+            fontSize = 16.sp,
+            color = if (spec.url.isBlank()) TextSecondary else TextPrimary,
+            maxLines = 1,
+        )
+    }
+
+    if (editing) {
+        WebhookEditDialog(
+            initial = spec,
+            onDismiss = { editing = false },
+            onSave = { newSpec ->
+                onUpdate(action.copy(payload = WebhookAction.payload(newSpec), displayName = WebhookAction.displayLabel(newSpec)))
+                editing = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun WebhookEditDialog(
+    initial: WebhookAction.Spec,
+    onDismiss: () -> Unit,
+    onSave: (WebhookAction.Spec) -> Unit,
+) {
+    var url by remember { mutableStateOf(initial.url) }
+    var method by remember { mutableStateOf(initial.method) }
+    var body by remember { mutableStateOf(initial.body) }
+    var secret by remember { mutableStateOf(initial.secret) }
+    val problem = if (url.isBlank()) null else WebhookAction.urlProblem(url)
+    val canSave = url.isNotBlank() && problem == null
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = TextPrimary,
+        unfocusedTextColor = TextPrimary,
+        focusedBorderColor = AccentGreen,
+        unfocusedBorderColor = CardBorder,
+        focusedLabelColor = AccentGreen,
+        unfocusedLabelColor = TextSecondary,
+        cursorColor = AccentGreen,
+    )
+
+    AppAlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CardSurface,
+        title = { Text(stringResource(R.string.automation_action_webhook), color = TextPrimary, fontSize = 16.sp) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text(stringResource(R.string.automation_webhook_url)) },
+                    singleLine = true,
+                    isError = problem != null,
+                    supportingText = problem?.let { msg -> { Text(msg) } },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = fieldColors,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("POST", "GET").forEach { m ->
+                        StateChip(m, selected = method == m) { method = m }
+                    }
+                }
+                if (method == "POST") {
+                    OutlinedTextField(
+                        value = body,
+                        onValueChange = { body = it },
+                        label = { Text(stringResource(R.string.automation_webhook_body)) },
+                        minLines = 2,
+                        maxLines = 5,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = fieldColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                OutlinedTextField(
+                    value = secret,
+                    onValueChange = { secret = it },
+                    label = { Text(stringResource(R.string.automation_webhook_secret)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = fieldColors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(stringResource(R.string.automation_webhook_hint), fontSize = 13.sp, color = TextSecondary)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (canSave) onSave(WebhookAction.Spec(url.trim(), method, body, secret.trim())) },
+                enabled = canSave,
+            ) {
+                Text(stringResource(R.string.automation_save_button), color = if (canSave) AccentGreen else TextMuted)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.automation_cancel_button), color = TextSecondary)
+            }
+        },
     )
 }

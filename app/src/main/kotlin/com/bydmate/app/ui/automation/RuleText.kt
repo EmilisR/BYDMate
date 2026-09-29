@@ -7,10 +7,13 @@ import com.bydmate.app.R
 import com.bydmate.app.data.automation.ActionDispatcher
 import com.bydmate.app.data.automation.ActionValidationError
 import com.bydmate.app.data.automation.AutomationEngine
+import com.bydmate.app.data.automation.LongPress
 import com.bydmate.app.data.automation.OneShotTrigger
 import com.bydmate.app.data.automation.RuleDraftValidator
 import com.bydmate.app.data.automation.ScheduleSpec
 import com.bydmate.app.data.automation.TriggerNumber
+import com.bydmate.app.data.automation.VehicleSwitchCatalog
+import com.bydmate.app.data.automation.WebhookAction
 import com.bydmate.app.data.automation.minuteToHHmm
 import com.bydmate.app.data.local.entity.ActionDef
 import com.bydmate.app.data.local.entity.RuleEntity
@@ -123,10 +126,10 @@ internal fun conditionText(t: TriggerDef, lc: Context, now: Long, zone: ZoneId):
     "time_range" -> ScheduleSpec.fromJson(t.value)?.let { scheduleText(it, lc) } ?: t.displayName
     "service_start" -> lc.getString(R.string.automation_trigger_service_start)
     "network_available" -> lc.getString(R.string.automation_trigger_internet)
-    "button_press" -> lc.getString(R.string.auto_ui_phrase_button, t.value.toIntOrNull() ?: 1)
+    "button_press" -> longPressText(t, lc, lc.getString(R.string.auto_ui_phrase_button, t.value.toIntOrNull() ?: 1))
     AutomationEngine.TRIGGER_KIND_STEERING_KEY -> {
         val code = t.value.toIntOrNull() ?: 0
-        if (code > 0) lc.getString(R.string.auto_ui_phrase_steering, steeringKeyLabel(lc, code))
+        if (code > 0) longPressText(t, lc, lc.getString(R.string.auto_ui_phrase_steering, steeringKeyLabel(lc, code)))
         else lc.getString(R.string.auto_ui_phrase_steering_none)
     }
     "voice" -> if (t.value.isBlank()) lc.getString(R.string.automation_trigger_type_voice)
@@ -135,6 +138,10 @@ internal fun conditionText(t: TriggerDef, lc: Context, now: Long, zone: ZoneId):
         ?.let { lc.getString(R.string.auto_ui_phrase_once, whenText(it, lc, now, zone)) } ?: t.displayName
     else -> t.displayName
 }
+
+/** «Кнопка 2 (долгое нажатие)» for a long-press binding ([LongPress]), the phrase as is otherwise. */
+private fun longPressText(t: TriggerDef, lc: Context, phrase: String): String =
+    if (LongPress.of(t)) lc.getString(R.string.auto_ui_phrase_long_press, phrase) else phrase
 
 private fun paramConditionText(t: TriggerDef, lc: Context): String {
     val option = TRIGGER_PARAMS.firstOrNull { it.param == t.param }
@@ -245,6 +252,11 @@ internal fun actionText(a: ActionDef, lc: Context): String = when (a.kind) {
     "navigate" -> quoted(R.string.automation_action_navigate, a.navigateName(), lc)
     "url" -> quoted(R.string.automation_action_url, a.urlString(), lc)
     TELEGRAM_REPORT_KIND -> lc.getString(R.string.automation_action_tg_report)
+    VehicleSwitchCatalog.KIND -> VehicleSwitchCatalog.parse(a.payload)
+        ?.let { VehicleSwitchCatalog.displayName(it) } ?: a.displayName
+    WebhookAction.KIND -> WebhookAction.parse(a.payload)
+        ?.takeIf { it.url.isNotBlank() }?.let { WebhookAction.displayLabel(it) }
+        ?: lc.getString(R.string.automation_action_webhook)
     "sentry" -> onOffText(
         R.string.automation_action_sentry, R.string.automation_action_sentry_on, R.string.automation_action_sentry_off, a.payload, lc,
     )

@@ -40,6 +40,8 @@ import com.bydmate.app.data.local.entity.TriggerDef
 import com.bydmate.app.data.repository.PlaceRepository
 import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.automation.ActionDispatcher
+import com.bydmate.app.data.automation.VehicleSwitchCatalog
+import com.bydmate.app.data.automation.WebhookAction
 import com.bydmate.app.data.loop.TimedSnapshot
 import com.bydmate.app.data.remote.DiParsData
 import com.bydmate.app.data.telegram.ReportField
@@ -563,6 +565,18 @@ class AutomationViewModel @Inject @Suppress("LongParameterList") constructor( //
      * Bypasses the automation edge/cooldown logic by design — this is a manual action.
      */
     fun executeNow(action: ActionDef) {
+        // ADAS/CPD switches and webhooks: the result text carries the car's status readback
+        // (or the HTTP code), which is exactly what a first test on a new car needs to see.
+        if (action.kind == VehicleSwitchCatalog.KIND || action.kind == WebhookAction.KIND) {
+            viewModelScope.launch {
+                val result = actionDispatcher.dispatch(action, TrackingService.lastData.value)
+                val lc = context.appLocalizedContext()
+                val msg = result.reason ?: if (result.success) lc.getString(R.string.auto_msg_dispatch_sent)
+                          else lc.getString(R.string.auto_msg_unavailable)
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         if (action.kind == "toggle") {
             viewModelScope.launch {
                 val result = actionDispatcher.dispatch(action, TrackingService.lastData.value)
@@ -1652,6 +1666,20 @@ fun newSentryAction(context: Context): ActionDef = ActionDef(
 )
 
 // --- Hotspot helpers ---
+
+fun newVehicleSwitchAction(context: Context): ActionDef = ActionDef(
+    command = VehicleSwitchCatalog.KIND,
+    displayName = context.getString(R.string.automation_action_vehicle_switch),
+    kind = VehicleSwitchCatalog.KIND,
+    payload = VehicleSwitchCatalog.payload("cpd", on = false),
+)
+
+fun newWebhookAction(context: Context): ActionDef = ActionDef(
+    command = WebhookAction.KIND,
+    displayName = context.getString(R.string.automation_action_webhook),
+    kind = WebhookAction.KIND,
+    payload = WebhookAction.payload(WebhookAction.Spec(url = "", method = "POST", body = "", secret = "")),
+)
 
 fun newHotspotAction(context: Context): ActionDef = ActionDef(
     command = "hotspot",

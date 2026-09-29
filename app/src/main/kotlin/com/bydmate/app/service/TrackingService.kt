@@ -494,7 +494,7 @@ class TrackingService : Service(), LocationListener {
          * "no rules for button N" toast). No running service ⇒ onResult(0), fail-soft.
          * onResult may be invoked off the main thread; callers marshal UI work.
          */
-        fun fireAutomationButton(buttonId: Int, onResult: (matched: Int) -> Unit) {
+        fun fireAutomationButton(buttonId: Int, long: Boolean = false, onResult: (matched: Int) -> Unit) {
             val svc = instance
             if (svc == null) {
                 onResult(0)
@@ -502,7 +502,7 @@ class TrackingService : Service(), LocationListener {
             }
             svc.serviceScope.launch {
                 val matched = try {
-                    svc.automationEngine.onButtonPress(buttonId)
+                    svc.automationEngine.onButtonPress(buttonId, long)
                 } catch (e: Exception) {
                     Log.w(TAG, "fireAutomationButton failed: ${e.message}")
                     0
@@ -516,7 +516,7 @@ class TrackingService : Service(), LocationListener {
          * Same shape as [fireAutomationButton]; matched count is diagnostics only
          * (the key was already consumed by the time the rules run).
          */
-        fun fireSteeringKey(keyCode: Int, onResult: (matched: Int) -> Unit) {
+        fun fireSteeringKey(keyCode: Int, long: Boolean = false, onResult: (matched: Int) -> Unit) {
             val svc = instance
             if (svc == null) {
                 onResult(0)
@@ -524,7 +524,7 @@ class TrackingService : Service(), LocationListener {
             }
             svc.serviceScope.launch {
                 val matched = try {
-                    svc.automationEngine.onSteeringKey(keyCode)
+                    svc.automationEngine.onSteeringKey(keyCode, long)
                 } catch (e: Exception) {
                     Log.w(TAG, "fireSteeringKey failed: ${e.message}")
                     0
@@ -540,6 +540,14 @@ class TrackingService : Service(), LocationListener {
          */
         fun steeringKeyAssigned(keyCode: Int): Boolean =
             instance?.automationEngine?.steeringKeyCodes?.value?.contains(keyCode) == true
+
+        /** True when [keyCode] has a LONG-press binding: the key filter must time the hold. */
+        fun steeringKeyLongAssigned(keyCode: Int): Boolean =
+            instance?.automationEngine?.longSteeringKeyCodes?.value?.contains(keyCode) == true
+
+        /** True when [keyCode] has a short-press binding (next to a long one on a timed key). */
+        fun steeringKeyShortAssigned(keyCode: Int): Boolean =
+            instance?.automationEngine?.shortSteeringKeyCodes?.value?.contains(keyCode) == true
 
         fun start(context: Context) {
             val intent = Intent(context, TrackingService::class.java)

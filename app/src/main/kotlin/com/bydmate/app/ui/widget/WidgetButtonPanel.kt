@@ -4,7 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -119,6 +120,7 @@ fun WidgetButtonPanel(
     expanded: Boolean,
     scaleFactor: Float,
     onButtonClick: (Int) -> Unit,
+    onButtonLongClick: (Int) -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { WidgetPreferences(context) }
@@ -156,6 +158,7 @@ fun WidgetButtonPanel(
                         expanded = expanded,
                         staggerIndex = index,
                         onClick = onButtonClick,
+                        onLongClick = onButtonLongClick,
                     )
                 }
             }
@@ -168,6 +171,7 @@ fun WidgetButtonPanel(
  * while hidden (offset up, alpha 0) and slides down into the pocket as it fades in.
  * [staggerIndex] delays the animation start so buttons fan out in turn.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ButtonCell(
     number: Int,
@@ -175,6 +179,7 @@ private fun ButtonCell(
     expanded: Boolean,
     staggerIndex: Int,
     onClick: (Int) -> Unit,
+    onLongClick: (Int) -> Unit,
 ) {
     // progress: 0 = hidden behind panel edge, 1 = fully visible in position.
     val progress by animateFloatAsState(
@@ -193,7 +198,11 @@ private fun ButtonCell(
             .alpha(progress)
             .background(CardSurfaceElevated, RoundedCornerShape(12.dp))
             .border(1.5.dp, CardBorder, RoundedCornerShape(12.dp))
-            .clickable(enabled = expanded) { onClick(number) },
+            .combinedClickable(
+                enabled = expanded,
+                onClick = { onClick(number) },
+                onLongClick = { onLongClick(number) },
+            ),
         contentAlignment = Alignment.Center,
     ) {
         val icon = WidgetButtonIcons.find(iconId)

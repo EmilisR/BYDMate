@@ -2081,4 +2081,20 @@
     <string name="auto_ui_test_park">Не выполнено: правило работает только на парковке. Включите P.</string>
     <string name="auto_ui_confirm_rule">Правило «%1$s»</string>
     <string name="auto_ui_confirm_countdown">Отменится через %1$d с</string>
+    <!-- fork: ADAS/CPD switches, webhook action, long press -->
+    <string name="automation_action_vehicle_switch">Переключатель ADAS / CPD</string>
+    <string name="automation_action_webhook">Вебхук</string>
+    <string name="auto_ui_section_adas">Помощь водителю (ADAS)</string>
+    <string name="automation_vehicle_switch_pick">Выберите функцию</string>
+    <string name="automation_vehicle_switch_on">Вкл</string>
+    <string name="automation_vehicle_switch_off">Выкл</string>
+    <string name="automation_vehicle_switch_raw">Сырое значение</string>
+    <string name="automation_vehicle_switch_critical">Функция безопасности: выключение только в P и всегда с подтверждением.</string>
+    <string name="automation_trigger_long_press">Долгое нажатие</string>
+    <string name="auto_ui_phrase_long_press">%1$s (долгое нажатие)</string>
+    <string name="automation_webhook_tap_to_set">Нажмите, чтобы указать URL вебхука</string>
+    <string name="automation_webhook_url">URL (https)</string>
+    <string name="automation_webhook_body">Тело (пусто = JSON-снимок)</string>
+    <string name="automation_webhook_secret">Bearer-токен (необязательно)</string>
+    <string name="automation_webhook_hint">Подстановки: {rule} {ts} {soc} {speed} {gear} {mileage}</string>
 </resources>

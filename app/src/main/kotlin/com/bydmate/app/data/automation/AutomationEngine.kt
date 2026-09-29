@@ -163,6 +163,12 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
     // key event itself — a DB read there would run on the input path.
     private val _steeringKeyCodes = MutableStateFlow<Set<Int>>(emptySet())
     val steeringKeyCodes: StateFlow<Set<Int>> = _steeringKeyCodes
+    // The subset of those keys bound as a LONG press ([LongPress]): the key filter holds their
+    // short action until it knows whether the key is held.
+    private val _longSteeringKeyCodes = MutableStateFlow<Set<Int>>(emptySet())
+    val longSteeringKeyCodes: StateFlow<Set<Int>> = _longSteeringKeyCodes
+    private val _shortSteeringKeyCodes = MutableStateFlow<Set<Int>>(emptySet())
+    val shortSteeringKeyCodes: StateFlow<Set<Int>> = _shortSteeringKeyCodes
 
     private data class PendingAction(
         val rule: RuleEntity,
@@ -183,13 +189,17 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
     private fun observeSteeringKeyCodes() {
         scope.launch {
             ruleDao.getAll().collect { rules ->
-                _steeringKeyCodes.value = rules
+                val keyTriggers = rules
                     .filter { it.enabled }
                     .flatMap { TriggerDef.listFromJson(it.triggers) }
                     .filter { it.kind == TRIGGER_KIND_STEERING_KEY }
-                    // 0 = "not assigned yet" (a trigger just added from the menu); it must never
-                    // claim a key, so the filter never sees it.
-                    .mapNotNullTo(HashSet()) { it.value.toIntOrNull()?.takeIf { code -> code > 0 } }
+                // 0 = "not assigned yet" (a trigger just added from the menu); it must never
+                // claim a key, so the filter never sees it.
+                fun codes(list: List<TriggerDef>): Set<Int> =
+                    list.mapNotNullTo(HashSet()) { it.value.toIntOrNull()?.takeIf { code -> code > 0 } }
+                _steeringKeyCodes.value = codes(keyTriggers)
+                _longSteeringKeyCodes.value = codes(keyTriggers.filter { LongPress.of(it) })
+                _shortSteeringKeyCodes.value = codes(keyTriggers.filterNot { LongPress.of(it) })
             }
         }
     }
@@ -363,7 +373,7 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
 
                 val snapshot = buildSnapshot(triggers, data)
 
-                if (rule.confirmBeforeExecute) {
+                if (mustConfirm(rule, actions)) {
                     confirmThenRun(rule, actions, snapshot, now)
                 } else {
                     scope.launch { executeAndLog(rule, actions, snapshot, data) }
@@ -382,8 +392,8 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
      * Returns the number of rules matched by button number (0 ⇒ caller shows the
      * "no rules for button N" toast).
      */
-    suspend fun onButtonPress(buttonId: Int): Int =
-        fireManualTrigger("button_press", buttonId.toString())
+    suspend fun onButtonPress(buttonId: Int, long: Boolean = false): Int =
+        fireManualTrigger("button_press", buttonId.toString(), long)
 
     /**
      * Direct entry point for a steering-wheel key bound to a rule, called from the
@@ -391,8 +401,8 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
      *
      * Returns the number of rules matched by keycode (0 ⇒ nothing was bound to it).
      */
-    suspend fun onSteeringKey(keyCode: Int): Int =
-        fireManualTrigger(TRIGGER_KIND_STEERING_KEY, keyCode.toString())
+    suspend fun onSteeringKey(keyCode: Int, long: Boolean = false): Int =
+        fireManualTrigger(TRIGGER_KIND_STEERING_KEY, keyCode.toString(), long)
 
     /**
      * Shared body of the manual (event) trigger paths. Runs every ENABLED rule
@@ -409,10 +419,10 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
      * Returns the number of matched rules. A matched-but-park-gated rule still
      * counts, so the caller does not falsely report "no rules".
      */
-    private suspend fun fireManualTrigger(kind: String, value: String): Int {
+    private suspend fun fireManualTrigger(kind: String, value: String, long: Boolean = false): Int {
         val matching = ruleDao.getEnabled().filter { rule ->
             TriggerDef.listFromJson(rule.triggers).any {
-                it.kind == kind && it.value == value
+                it.kind == kind && it.value == value && LongPress.of(it) == long
             }
         }
         if (matching.isEmpty()) return 0
@@ -438,7 +448,7 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
                 // Mark triggered before execution (same ordering as evaluate path).
                 ruleDao.updateLastTriggered(rule.id, now)
 
-                if (rule.confirmBeforeExecute) {
+                if (mustConfirm(rule, actions)) {
                     confirmThenRun(rule, actions, snapshot, now)
                 } else {
                     // Awaited directly (not scope.launch) so the caller's
@@ -699,7 +709,7 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
         ruleDao.updateLastTriggered(rule.id, System.currentTimeMillis())
         val snapshot = JSONObject().put("voice", true).toString()
 
-        if (rule.confirmBeforeExecute) {
+        if (mustConfirm(rule, actions)) {
             confirmThenRun(rule, actions, snapshot, System.currentTimeMillis())
             return VoiceFireResult.Confirming
         }
@@ -748,6 +758,15 @@ class AutomationEngine @Inject @Suppress("LongParameterList") constructor( // Hi
         // Fallback: user hasn't granted SYSTEM_ALERT_WINDOW.
         if (!shown) showConfirmNotification(rule, actions, snapshot)
     }
+
+    /**
+     * The rule's own «ask first» switch, or forced: disabling a safety-critical ADAS switch
+     * (AEB, ESP, ELKA …) always asks, whatever the rule says.
+     */
+    private fun mustConfirm(rule: RuleEntity, actions: List<ActionDef>): Boolean =
+        rule.confirmBeforeExecute || actions.any {
+            it.kind == VehicleSwitchCatalog.KIND && ActionDispatcher.isDangerousAction(it)
+        }
 
     private fun logSkip(rule: RuleEntity, reason: String, detail: String) {
         if (skipLog.shouldLog("${rule.id}:$reason", nowMs())) {

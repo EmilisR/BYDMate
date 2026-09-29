@@ -2066,4 +2066,20 @@
     <string name="auto_ui_test_park">Nie wykonano: reguła działa tylko na postoju. Włącz P.</string>
     <string name="auto_ui_confirm_rule">Reguła „%1$s”</string>
     <string name="auto_ui_confirm_countdown">Anulowanie za %1$d s</string>
+    <!-- fork: ADAS/CPD switches, webhook action, long press -->
+    <string name="automation_action_vehicle_switch">ADAS / CPD switch</string>
+    <string name="automation_action_webhook">Webhook</string>
+    <string name="auto_ui_section_adas">Driver assist (ADAS)</string>
+    <string name="automation_vehicle_switch_pick">Choose a switch</string>
+    <string name="automation_vehicle_switch_on">On</string>
+    <string name="automation_vehicle_switch_off">Off</string>
+    <string name="automation_vehicle_switch_raw">Raw value</string>
+    <string name="automation_vehicle_switch_critical">Safety function: turning it off runs only in P and always asks first.</string>
+    <string name="automation_trigger_long_press">Long press</string>
+    <string name="auto_ui_phrase_long_press">%1$s (long press)</string>
+    <string name="automation_webhook_tap_to_set">Tap to set the webhook URL</string>
+    <string name="automation_webhook_url">URL (https)</string>
+    <string name="automation_webhook_body">Body (empty = JSON snapshot)</string>
+    <string name="automation_webhook_secret">Bearer token (optional)</string>
+    <string name="automation_webhook_hint">Placeholders: {rule} {ts} {soc} {speed} {gear} {mileage}</string>
 </resources>

@@ -236,6 +236,7 @@ object WidgetController {
                     expanded = expandedState.value,
                     scaleFactor = scaleState.value,
                     onButtonClick = { n -> onWidgetButtonClick(viewCtx, n) },
+                    onButtonLongClick = { n -> onWidgetButtonClick(viewCtx, n, long = true) },
                 )
             }
         }
@@ -580,8 +581,8 @@ object WidgetController {
      * running) show a fail-soft toast. Result callback may arrive off the main
      * thread, so the toast is posted to the main looper.
      */
-    private fun onWidgetButtonClick(context: Context, number: Int) {
-        TrackingService.fireAutomationButton(number) { matched ->
+    private fun onWidgetButtonClick(context: Context, number: Int, long: Boolean = false) {
+        TrackingService.fireAutomationButton(number, long) { matched ->
             if (matched == 0) {
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     try {

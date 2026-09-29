@@ -5,11 +5,14 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
 import com.bydmate.app.data.autoservice.AdbRestorePreferencesImpl
 import com.bydmate.app.data.autoservice.WifiDebuggingDialogAutoAllow
+import com.bydmate.app.data.automation.LongPress
 import com.bydmate.app.diagnostics.Trace
 import com.bydmate.app.diagnostics.TraceArea
 import com.bydmate.app.media.KnobPlayPause
@@ -124,18 +127,68 @@ class SteeringWheelKeyService : AccessibilityService() {
             StarDecision.CONSUME -> true
             // Automation rules bound to a key run LAST: projection, voice and the knob keep
             // priority over a user assignment, and the settings UI warns about occupied keys.
-            StarDecision.PASS_THROUGH -> when (
-                steeringKeyDecision(event.keyCode, isDown, TrackingService.steeringKeyAssigned(event.keyCode))
-            ) {
-                SteeringKeyDecision.FIRE -> {
-                    TrackingService.fireSteeringKey(event.keyCode) { matched ->
-                        Log.d(TAG, "steering key ${event.keyCode}: $matched rule(s)")
+            StarDecision.PASS_THROUGH -> when {
+                TrackingService.steeringKeyLongAssigned(event.keyCode) -> onTimedKey(event, isDown)
+                else -> when (
+                    steeringKeyDecision(event.keyCode, isDown, TrackingService.steeringKeyAssigned(event.keyCode))
+                ) {
+                    SteeringKeyDecision.FIRE -> {
+                        fireRules(event.keyCode, long = false)
+                        traced(event, "automation")
                     }
-                    traced(event, "automation")
+                    SteeringKeyDecision.CONSUME -> true
+                    SteeringKeyDecision.PASS_THROUGH -> false
                 }
-                SteeringKeyDecision.CONSUME -> true
-                SteeringKeyDecision.PASS_THROUGH -> false
             }
+        }
+    }
+
+    private val holdHandler = Handler(Looper.getMainLooper())
+    private var heldKey: Int? = null
+    private var longFired = false
+    private var holdRunnable: Runnable? = null
+
+    /**
+     * A key with a long-press binding ([LongPress]). Its DOWN edge only starts a
+     * [LongPress.HOLD_MS] timer: held past it, the long-press rules run; released earlier, the
+     * short-press rules run on the UP edge. Both edges and the auto-repeat DOWNs are consumed,
+     * so the key's native action never fires while it is bound. A firmware that reports a long
+     * press as its own keycode (the right star: 351 short, 352 long) needs no timing: bind that
+     * code as a normal short press.
+     */
+    private fun onTimedKey(event: KeyEvent, isDown: Boolean): Boolean {
+        val code = event.keyCode
+        if (isDown) {
+            if (event.repeatCount > 0 || heldKey == code) return true
+            holdRunnable?.let { holdHandler.removeCallbacks(it) }
+            heldKey = code
+            longFired = false
+            val r = Runnable {
+                if (heldKey == code) {
+                    longFired = true
+                    fireRules(code, long = true)
+                    Trace.event(TraceArea.USER, "key", "code" to code, "action" to "automation_long")
+                }
+            }
+            holdRunnable = r
+            holdHandler.postDelayed(r, LongPress.HOLD_MS)
+            return true
+        }
+        if (event.action != KeyEvent.ACTION_UP) return true
+        holdRunnable?.let { holdHandler.removeCallbacks(it) }
+        holdRunnable = null
+        val wasHeld = heldKey == code
+        heldKey = null
+        if (wasHeld && !longFired && TrackingService.steeringKeyShortAssigned(code)) {
+            fireRules(code, long = false)
+            return traced(event, "automation")
+        }
+        return true
+    }
+
+    private fun fireRules(keyCode: Int, long: Boolean) {
+        TrackingService.fireSteeringKey(keyCode, long) { matched ->
+            Log.d(TAG, "steering key $keyCode long=$long: $matched rule(s)")
         }
     }
 

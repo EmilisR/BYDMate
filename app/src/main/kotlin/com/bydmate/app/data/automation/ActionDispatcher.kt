@@ -84,6 +84,8 @@ class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hi
         private const val NAVI_PACKAGE = "ru.yandex.yandexnavi"
         // Hard cap on user-set delay action; protects against typos like "60000000".
         private const val MAX_DELAY_MS = 60_000L
+        private const val VEHICLE_SWITCH_READBACK_DELAY_MS = 800L
+        private const val WEBHOOK_TIMEOUT_S = 10L
         private val BLOCKED_PATTERNS = listOf("发送CAN", "执行SHELL", "下电")
 
         /**
@@ -246,6 +248,8 @@ class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hi
             // so they are treated as dangerous whichever way they would flip.
             // Sentry rides here too: a flip may be a disable, same tier as the explicit "0".
             "toggle" -> action.payload in setOf(TOGGLE_LOCKS, TOGGLE_TRUNK, TOGGLE_SENTRY)
+            VehicleSwitchCatalog.KIND -> VehicleSwitchCatalog.parse(action.payload)
+                ?.let { VehicleSwitchCatalog.needsParkAndConfirm(it) } ?: false
             else -> false
         }
 
@@ -622,6 +626,8 @@ class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hi
             "split_screen_close" -> dispatchSplitScreenClose()
             "split_screen_toggle" -> dispatchSplitScreenToggle()
             TELEGRAM_REPORT_KIND -> telegramReporter.get().runReportAction(action, appStrings)
+            VehicleSwitchCatalog.KIND -> dispatchVehicleSwitch(action, data)
+            WebhookAction.KIND -> dispatchWebhook(action, data)
             else -> DispatchResult(false, "Unknown action kind: ${action.kind}")
         }
     } catch (e: Exception) {
@@ -657,6 +663,58 @@ class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hi
         val ok = helper.setHotspot(enable)
         return if (ok) DispatchResult(true)
         else DispatchResult(false, appStrings.get(R.string.dispatch_hotspot_failed))
+    }
+
+    // --- ADAS / CPD switches (VehicleSwitchCatalog, native write via helper daemon) ---
+
+    /**
+     * Writes one [VehicleSwitchCatalog] switch. The catalog is the allowlist: unknown ids and
+     * any device other than ADAS/Setting are refused. Safety-critical disables run only in P
+     * (fail-closed on unknown gear); the rule-level confirmation is forced by the engine. The
+     * status fid is read before and after, and both values ride in the log and the result, so
+     * the first run on a new car shows which encoding it uses.
+     */
+    private suspend fun dispatchVehicleSwitch(action: ActionDef, data: DiParsData?): DispatchResult {
+        val request = VehicleSwitchCatalog.parse(action.payload)
+            ?: return DispatchResult(false, "ADAS: invalid action")
+        val entry = VehicleSwitchCatalog.find(request.id)
+            ?: return DispatchResult(false, "ADAS: unknown switch ${request.id}")
+        if (entry.dev != VehicleSwitchCatalog.DEV_ADAS && entry.dev != VehicleSwitchCatalog.DEV_SETTING) {
+            return DispatchResult(false, "ADAS: device ${entry.dev} not allowed")
+        }
+        if (VehicleSwitchCatalog.needsParkAndConfirm(request) && data?.gear != 1) {
+            return DispatchResult(false, "${entry.label}: only in P")
+        }
+        val value = VehicleSwitchCatalog.valueFor(entry, request)
+            ?: return DispatchResult(false, "${entry.label}: no value set")
+        val before = entry.statusFid?.let { runCatching { helper.read(entry.dev, it) }.getOrNull() }
+        val status = helper.writeStatus(entry.dev, entry.writeFid, value)
+        delay(VEHICLE_SWITCH_READBACK_DELAY_MS)
+        val after = entry.statusFid?.let { runCatching { helper.read(entry.dev, it) }.getOrNull() }
+        val trace = "value=$value write=$status status $before→$after"
+        Log.i(TAG, "vehicle_switch ${entry.id} dev=${entry.dev} fid=${entry.writeFid} $trace")
+        return when {
+            status == null -> DispatchResult(false, "${entry.label}: helper unreachable")
+            status < 0 -> DispatchResult(false, "${entry.label}: rejected ($trace)")
+            else -> DispatchResult(true, "${entry.label}: $trace")
+        }
+    }
+
+    // --- webhook (HTTP request to a user URL) ---
+
+    private val webhookAction by lazy {
+        WebhookAction(
+            okhttp3.OkHttpClient.Builder()
+                .connectTimeout(WEBHOOK_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(WEBHOOK_TIMEOUT_S, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+        )
+    }
+
+    private suspend fun dispatchWebhook(action: ActionDef, data: DiParsData?): DispatchResult {
+        val spec = WebhookAction.parse(action.payload)
+            ?: return DispatchResult(false, "Webhook: invalid action")
+        return webhookAction.send(spec, action.displayName, data)
     }
 
     // --- cluster projection (steering-wheel star key path, via ClusterVoiceControl) ---
