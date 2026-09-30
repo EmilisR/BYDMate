@@ -2097,4 +2097,8 @@
     <string name="automation_webhook_body">Тело (пусто = JSON-снимок)</string>
     <string name="automation_webhook_secret">Bearer-токен (необязательно)</string>
     <string name="automation_webhook_hint">Подстановки: {rule} {ts} {soc} {speed} {gear} {mileage}</string>
+    <string name="automation_action_media_control">Управление медиа</string>
+    <string name="automation_media_active_player">Активный плеер</string>
+    <string name="automation_media_open_first">Сначала открыть приложение</string>
+    <string name="automation_media_query">Трек, исполнитель или плейлист</string>
 </resources>

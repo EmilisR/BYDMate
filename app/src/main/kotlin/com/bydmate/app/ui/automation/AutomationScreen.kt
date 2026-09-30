@@ -201,6 +201,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.time.ZoneId
 import com.bydmate.app.data.automation.ActionDispatcher
 import com.bydmate.app.data.automation.LongPress
+import com.bydmate.app.data.automation.MediaControlAction
 import com.bydmate.app.data.automation.VehicleSwitchCatalog
 import com.bydmate.app.data.automation.WebhookAction
 import com.bydmate.app.data.automation.ScheduleSpec
@@ -2542,7 +2543,8 @@ private fun ActionRow(
         // target is flipped from the live state. Result is shown via Toast + logcat line.
         val testable = (action.kind == "param" && action.command.isNotBlank()) ||
             (action.kind == "toggle" && !action.payload.isNullOrBlank()) ||
-            action.kind == VehicleSwitchCatalog.KIND || action.kind == WebhookAction.KIND
+            action.kind == VehicleSwitchCatalog.KIND || action.kind == WebhookAction.KIND ||
+            action.kind == MediaControlAction.KIND
         if (testable) {
             IconButton(onClick = { onTest(action) }, modifier = Modifier.size(MIN_TOUCH)) {
                 Box(
@@ -2602,6 +2604,8 @@ private fun ActionRow(
                     VehicleSwitchActionControls(action = action, onUpdate = onUpdate, modifier = fill)
                 WebhookAction.KIND ->
                     WebhookActionControls(action = action, onUpdate = onUpdate, modifier = fill)
+                MediaControlAction.KIND ->
+                    MediaControlActionControls(action = action, onUpdate = onUpdate, modifier = fill)
                 TELEGRAM_REPORT_KIND ->
                     TelegramReportActionControls(
                         action = action, tgBotConnected = tgBotConnected, onUpdate = onUpdate, modifier = fill,
@@ -3046,6 +3050,7 @@ private fun pickerSections(): List<PickerSection> {
             PickerSection(lc.getString(R.string.auto_ui_section_apps), listOf(
                 PickerTile(lc.getString(R.string.automation_action_app_launch)) { newAppLaunchAction(it) },
                 PickerTile(lc.getString(R.string.automation_action_yandex_music)) { newYandexMusicAction(it) },
+                PickerTile(lc.getString(R.string.automation_action_media_control)) { newMediaControlAction(it) },
                 PickerTile(lc.getString(R.string.automation_action_call)) { newCallAction(it) },
                 PickerTile(lc.getString(R.string.automation_action_navigate)) { newNavigateAction(it) },
                 PickerTile(lc.getString(R.string.automation_action_url)) { newUrlAction(it) },
@@ -5116,4 +5121,75 @@ private fun WebhookEditDialog(
             }
         },
     )
+}
+
+// --- Media control Action Controls ---
+
+/**
+ * [MediaControlAction]: what to do, which player (the active one or an installed app), whether
+ * to open that app first, and the search text for «Play search».
+ */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun MediaControlActionControls(
+    action: ActionDef,
+    onUpdate: (ActionDef) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val spec = MediaControlAction.parse(action.payload)
+        ?: MediaControlAction.Spec(op = "play", packageName = "", launch = false, query = "")
+    fun update(next: MediaControlAction.Spec) = onUpdate(
+        action.copy(payload = MediaControlAction.payload(next), displayName = MediaControlAction.displayName(next))
+    )
+    val installed = remember(context) {
+        MediaControlAction.KNOWN_PLAYERS.filter {
+            context.packageManager.getLaunchIntentForPackage(it.packageName) != null
+        }
+    }
+    // The saved app stays selectable even when it is not in the known list or not installed.
+    val players = remember(installed, spec.packageName) {
+        val extra = spec.packageName.takeIf { p -> p.isNotBlank() && installed.none { it.packageName == p } }
+            ?.let { listOf(MediaControlAction.Player(it, MediaControlAction.playerLabel(it))) } ?: emptyList()
+        listOf(MediaControlAction.Player("", context.getString(R.string.automation_media_active_player))) + installed + extra
+    }
+    var query by remember(action.payload) { mutableStateOf(spec.query) }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            DropdownField(
+                text = MediaControlAction.opLabel(spec.op),
+                items = MediaControlAction.OPS.map { MediaControlAction.opLabel(it) },
+                onSelect = { i -> update(spec.copy(op = MediaControlAction.OPS[i])) },
+            )
+            DropdownField(
+                text = players.firstOrNull { it.packageName == spec.packageName }?.label
+                    ?: MediaControlAction.playerLabel(spec.packageName),
+                items = players.map { it.label },
+                fillWidth = true,
+                modifier = Modifier.weight(1f),
+                onSelect = { i ->
+                    val p = players[i].packageName
+                    update(spec.copy(packageName = p, launch = p.isNotBlank() && spec.launch))
+                },
+            )
+        }
+        if (spec.packageName.isNotBlank()) {
+            StateChip(stringResource(R.string.automation_media_open_first), selected = spec.launch) {
+                update(spec.copy(launch = !spec.launch))
+            }
+        }
+        if (spec.op == "play_search") {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { t ->
+                    query = t
+                    update(spec.copy(query = t))
+                },
+                label = { Text(stringResource(R.string.automation_media_query)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
 }

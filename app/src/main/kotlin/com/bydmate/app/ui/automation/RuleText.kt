@@ -8,6 +8,7 @@ import com.bydmate.app.data.automation.ActionDispatcher
 import com.bydmate.app.data.automation.ActionValidationError
 import com.bydmate.app.data.automation.AutomationEngine
 import com.bydmate.app.data.automation.LongPress
+import com.bydmate.app.data.automation.MediaControlAction
 import com.bydmate.app.data.automation.OneShotTrigger
 import com.bydmate.app.data.automation.RuleDraftValidator
 import com.bydmate.app.data.automation.ScheduleSpec
@@ -254,6 +255,8 @@ internal fun actionText(a: ActionDef, lc: Context): String = when (a.kind) {
     TELEGRAM_REPORT_KIND -> lc.getString(R.string.automation_action_tg_report)
     VehicleSwitchCatalog.KIND -> VehicleSwitchCatalog.parse(a.payload)
         ?.let { VehicleSwitchCatalog.displayName(it) } ?: a.displayName
+    MediaControlAction.KIND -> MediaControlAction.parse(a.payload)
+        ?.let { MediaControlAction.displayName(it) } ?: a.displayName
     WebhookAction.KIND -> WebhookAction.parse(a.payload)
         ?.takeIf { it.url.isNotBlank() }?.let { WebhookAction.displayLabel(it) }
         ?: lc.getString(R.string.automation_action_webhook)

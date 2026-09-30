@@ -86,6 +86,8 @@ class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hi
         private const val MAX_DELAY_MS = 60_000L
         private const val VEHICLE_SWITCH_READBACK_DELAY_MS = 800L
         private const val WEBHOOK_TIMEOUT_S = 10L
+        private const val MEDIA_SESSION_WAIT_MS = 10_000L
+        private const val MEDIA_SESSION_POLL_MS = 500L
         private val BLOCKED_PATTERNS = listOf("发送CAN", "执行SHELL", "下电")
 
         /**
@@ -628,6 +630,7 @@ class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hi
             TELEGRAM_REPORT_KIND -> telegramReporter.get().runReportAction(action, appStrings)
             VehicleSwitchCatalog.KIND -> dispatchVehicleSwitch(action, data)
             WebhookAction.KIND -> dispatchWebhook(action, data)
+            MediaControlAction.KIND -> dispatchMediaControl(action)
             else -> DispatchResult(false, "Unknown action kind: ${action.kind}")
         }
     } catch (e: Exception) {
@@ -715,6 +718,93 @@ class ActionDispatcher @Inject @Suppress("LongParameterList") constructor( // Hi
         val spec = WebhookAction.parse(action.payload)
             ?: return DispatchResult(false, "Webhook: invalid action")
         return webhookAction.send(spec, action.displayName, data)
+    }
+
+    // --- media control (MediaSession transport controls, media-key fallback) ---
+
+    /**
+     * Drives a player through its MediaSession. With `launch` the app is opened first and its
+     * session awaited, so "open YT Music and play" is a single action. play_search uses
+     * playFromSearch on the session, else the MEDIA_PLAY_FROM_SEARCH intent of the app.
+     */
+    @Suppress("CyclomaticComplexMethod", "ReturnCount", "LongMethod")
+    private suspend fun dispatchMediaControl(action: ActionDef): DispatchResult {
+        val spec = MediaControlAction.parse(action.payload)
+            ?: return DispatchResult(false, "Media: invalid action")
+        val pkg = spec.packageName
+        if (spec.op == "play_search" && spec.query.isBlank()) {
+            return DispatchResult(false, appStrings.get(R.string.dispatch_query_missing))
+        }
+        if (spec.launch && pkg.isNotBlank()) {
+            val launch = context.packageManager.getLaunchIntentForPackage(pkg)
+                ?: return DispatchResult(false, "Media: ${MediaControlAction.playerLabel(pkg)} is not installed")
+            if (findMediaController(pkg) == null) {
+                val started = tryStartActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), "media_launch:$pkg")
+                if (!started.success) return started
+            }
+        }
+        var controller = findMediaController(pkg)
+        if (controller == null && spec.launch && pkg.isNotBlank()) {
+            // A freshly opened player publishes its session a moment after its first frame.
+            val deadline = System.currentTimeMillis() + MEDIA_SESSION_WAIT_MS
+            while (controller == null && System.currentTimeMillis() < deadline) {
+                delay(MEDIA_SESSION_POLL_MS)
+                controller = findMediaController(pkg)
+            }
+        }
+        Log.i(TAG, "media_control op=${spec.op} target=${controller?.packageName ?: pkg} session=${controller != null}")
+
+        if (spec.op == "play_search") {
+            if (controller != null &&
+                runCatching { controller.transportControls.playFromSearch(spec.query.trim(), Bundle()) }.isSuccess
+            ) return DispatchResult(true, "Media: playing \u00ab${spec.query.trim()}\u00bb in ${controller.packageName}")
+            if (pkg.isBlank()) return DispatchResult(false, "Media: choose an app for Play search")
+            val intent = Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+                .setPackage(pkg)
+                .putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
+                .putExtra(SearchManager.QUERY, spec.query.trim())
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            return tryStartActivity(intent, "media_play_search:$pkg")
+        }
+
+        if (controller != null) {
+            val tc = controller.transportControls
+            val playing = controller.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING
+            val ok = runCatching {
+                when (spec.op) {
+                    "play" -> tc.play()
+                    "pause" -> tc.pause()
+                    "toggle" -> if (playing) tc.pause() else tc.play()
+                    "stop" -> tc.stop()
+                    "next" -> tc.skipToNext()
+                    else -> tc.skipToPrevious()
+                }
+            }.isSuccess
+            return if (ok) DispatchResult(true, "Media: ${MediaControlAction.opLabel(spec.op)} -> ${controller.packageName}")
+            else DispatchResult(false, "Media: ${controller.packageName} refused ${spec.op}")
+        }
+
+        // No session: a system media key reaches the last app that held the media buttons.
+        val keyCode = when (spec.op) {
+            "play" -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+            "pause" -> android.view.KeyEvent.KEYCODE_MEDIA_PAUSE
+            "toggle" -> android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+            "stop" -> android.view.KeyEvent.KEYCODE_MEDIA_STOP
+            "next" -> android.view.KeyEvent.KEYCODE_MEDIA_NEXT
+            else -> android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS
+        }
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            ?: return DispatchResult(false, "Media: no player found")
+        am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, keyCode))
+        am.dispatchMediaKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, keyCode))
+        return DispatchResult(true, "Media: ${MediaControlAction.opLabel(spec.op)} sent as a media key (no player session)")
+    }
+
+    /** The session to drive for [pkg] (blank = the active player), or null. */
+    private fun findMediaController(pkg: String): MediaController? {
+        val controllers = runCatching { activeMediaControllers() }.getOrDefault(emptyList())
+        val sessions = controllers.map { MediaControlAction.Session(it.packageName, it.playbackState?.state) }
+        return MediaControlAction.pickSession(sessions, pkg)?.let { controllers[it] }
     }
 
     // --- cluster projection (steering-wheel star key path, via ClusterVoiceControl) ---

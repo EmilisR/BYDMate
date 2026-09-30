@@ -68,3 +68,19 @@ fork builds install as updates.
 A rule bound to a steering key now keeps the key service running on its own.
 Before this fix it only ran when cluster projection, voice or the knob feature
 was on, so bound keys silently stopped working after the car was switched off.
+
+## Media control
+
+Automation → Add action → *Apps* → **Media control**.
+
+- **Command**: Play, Pause, Play / pause, Stop, Next track, Previous track,
+  Play search.
+- **Player**: *Active player* (whatever is playing, else the most recent one)
+  or a specific installed app (YouTube Music and ReVanced builds, Spotify,
+  Yandex Music, YouTube, Deezer).
+- **Open the app first**: launches the app and waits up to 10 s for its player
+  before sending the command. "Open YT Music and play" is one action.
+- **Play search**: plays a track, artist or playlist by name in the chosen app.
+
+If the app has no active player yet, Play/Pause/Next/Previous go out as a
+system media key, which reaches the last app that played.

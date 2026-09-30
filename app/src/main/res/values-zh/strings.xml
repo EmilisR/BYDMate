@@ -2044,4 +2044,8 @@
     <string name="automation_webhook_body">Body (empty = JSON snapshot)</string>
     <string name="automation_webhook_secret">Bearer token (optional)</string>
     <string name="automation_webhook_hint">Placeholders: {rule} {ts} {soc} {speed} {gear} {mileage}</string>
+    <string name="automation_action_media_control">Media control</string>
+    <string name="automation_media_active_player">Active player</string>
+    <string name="automation_media_open_first">Open the app first</string>
+    <string name="automation_media_query">Track, artist or playlist</string>
 </resources>

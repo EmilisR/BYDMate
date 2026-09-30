@@ -40,6 +40,7 @@ import com.bydmate.app.data.local.entity.TriggerDef
 import com.bydmate.app.data.repository.PlaceRepository
 import com.bydmate.app.data.repository.SettingsRepository
 import com.bydmate.app.data.automation.ActionDispatcher
+import com.bydmate.app.data.automation.MediaControlAction
 import com.bydmate.app.data.automation.VehicleSwitchCatalog
 import com.bydmate.app.data.automation.WebhookAction
 import com.bydmate.app.data.loop.TimedSnapshot
@@ -567,7 +568,8 @@ class AutomationViewModel @Inject @Suppress("LongParameterList") constructor( //
     fun executeNow(action: ActionDef) {
         // ADAS/CPD switches and webhooks: the result text carries the car's status readback
         // (or the HTTP code), which is exactly what a first test on a new car needs to see.
-        if (action.kind == VehicleSwitchCatalog.KIND || action.kind == WebhookAction.KIND) {
+        if (action.kind == VehicleSwitchCatalog.KIND || action.kind == WebhookAction.KIND ||
+            action.kind == MediaControlAction.KIND) {
             viewModelScope.launch {
                 val result = actionDispatcher.dispatch(action, TrackingService.lastData.value)
                 val lc = context.appLocalizedContext()
@@ -1673,6 +1675,17 @@ fun newVehicleSwitchAction(context: Context): ActionDef = ActionDef(
     kind = VehicleSwitchCatalog.KIND,
     payload = VehicleSwitchCatalog.payload("cpd", on = false),
 )
+
+@Suppress("UNUSED_PARAMETER") // same shape as the other picker factories
+fun newMediaControlAction(context: Context): ActionDef {
+    val spec = MediaControlAction.Spec(op = "play", packageName = "", launch = false, query = "")
+    return ActionDef(
+        command = MediaControlAction.KIND,
+        displayName = MediaControlAction.displayName(spec),
+        kind = MediaControlAction.KIND,
+        payload = MediaControlAction.payload(spec),
+    )
+}
 
 fun newWebhookAction(context: Context): ActionDef = ActionDef(
     command = WebhookAction.KIND,
