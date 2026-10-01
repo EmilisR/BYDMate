@@ -55,7 +55,7 @@ jobs:
           } > keystore.properties
 
       - name: Automation engine tests
-        run: chmod +x gradlew && ./gradlew :app:testDebugUnitTest --tests '*AutomationEngineSteeringKeyTest*' --tests '*AutomationEngineButtonPressTest*' --stacktrace
+        run: chmod +x gradlew && ./gradlew :app:testDebugUnitTest --tests '*AutomationEngineSteeringKeyTest*' --tests '*AutomationEngineButtonPressTest*' --tests '*CampingCommandsTest*' --stacktrace
 
       - name: Assemble release
         run: chmod +x gradlew && ./gradlew :app:assembleRelease --stacktrace

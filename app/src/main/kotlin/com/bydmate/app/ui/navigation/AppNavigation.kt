@@ -289,6 +289,7 @@ fun AppNavigation(
                             restoreState = true
                         }
                     },
+                    onOpenCamping = { navController.navigate("camping") },
                 )
             }
             composable(Screen.Trips.route) {
@@ -308,6 +309,9 @@ fun AppNavigation(
             }
             composable("trip_temperature") {
                 com.bydmate.app.ui.trips.TripTemperatureScreen(onBack = { navController.popBackStack() })
+            }
+            composable("camping") {
+                com.bydmate.app.ui.camping.CampingScreen(onBack = { navController.popBackStack() })
             }
             composable("tech_panel") {
                 com.bydmate.app.ui.tech.TechPanelScreen(onBack = { navController.popBackStack() })

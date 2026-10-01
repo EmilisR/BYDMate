@@ -100,6 +100,7 @@ import kotlin.math.ceil
 fun DashboardScreen(
     onOpenTechPanel: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenCamping: () -> Unit,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -386,6 +387,7 @@ fun DashboardScreen(
                                 onClick = { viewModel.toggleTripExpanded(2) },
                                 onLongClick = { viewModel.resetTripCounter(2) })
                         }
+                        CampingEntryButton(onClick = onOpenCamping)
                     }
 
                     // Pop-up dialogs
@@ -843,6 +845,28 @@ private fun TripCounterButton(
                 }
             }
         }
+    }
+}
+
+/** Opens camping mode setup; the label turns green while a camping session runs. */
+@Composable
+private fun CampingEntryButton(onClick: () -> Unit) {
+    val campingActive by com.bydmate.app.ui.camping.rememberCampingActive()
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = CardSurface),
+        border = androidx.compose.foundation.BorderStroke(
+            1.5.dp, if (campingActive) AccentGreen else AccentGreen.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    ) {
+        Text(
+            stringResource(if (campingActive) R.string.camping_entry_active else R.string.camping_title),
+            color = AccentGreen,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        )
     }
 }
 
