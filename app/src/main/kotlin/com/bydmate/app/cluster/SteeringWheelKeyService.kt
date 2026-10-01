@@ -128,6 +128,7 @@ class SteeringWheelKeyService : AccessibilityService() {
             // Automation rules bound to a key run LAST: projection, voice and the knob keep
             // priority over a user assignment, and the settings UI warns about occupied keys.
             StarDecision.PASS_THROUGH -> when {
+                isDown && event.repeatCount == 0 && logKey(event.keyCode) -> true  // never: logs only
                 TrackingService.steeringKeyLongAssigned(event.keyCode) -> onTimedKey(event, isDown)
                 else -> when (
                     steeringKeyDecision(event.keyCode, isDown, TrackingService.steeringKeyAssigned(event.keyCode))
@@ -186,9 +187,21 @@ class SteeringWheelKeyService : AccessibilityService() {
         return true
     }
 
+    /** One line per key press: what the automation filter saw. Always false (never consumes). */
+    private fun logKey(keyCode: Int): Boolean {
+        Log.i(
+            TAG,
+            "key $keyCode down: bound=${TrackingService.steeringKeyAssigned(keyCode)} " +
+                "long=${TrackingService.steeringKeyLongAssigned(keyCode)} " +
+                "short=${TrackingService.steeringKeyShortAssigned(keyCode)} " +
+                "service=${TrackingService.isRunning.value}",
+        )
+        return false
+    }
+
     private fun fireRules(keyCode: Int, long: Boolean) {
         TrackingService.fireSteeringKey(keyCode, long) { matched ->
-            Log.d(TAG, "steering key $keyCode long=$long: $matched rule(s)")
+            Log.i(TAG, "steering key $keyCode long=$long: $matched rule(s)")
         }
     }
 

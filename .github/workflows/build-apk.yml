@@ -54,6 +54,9 @@ jobs:
             echo "keyPassword=$KEY_PASSWORD"
           } > keystore.properties
 
+      - name: Automation engine tests
+        run: chmod +x gradlew && ./gradlew :app:testDebugUnitTest --tests '*AutomationEngineSteeringKeyTest*' --tests '*AutomationEngineButtonPressTest*' --stacktrace
+
       - name: Assemble release
         run: chmod +x gradlew && ./gradlew :app:assembleRelease --stacktrace
 

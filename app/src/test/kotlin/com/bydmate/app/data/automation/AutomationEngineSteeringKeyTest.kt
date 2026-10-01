@@ -113,6 +113,40 @@ class AutomationEngineSteeringKeyTest {
         assertEquals(setOf(305), awaitKeyCodes(engine, setOf(305)))
     }
 
+    private fun mixedRule(logic: String, steering: TriggerDef = steeringKeyTrigger(303)) = RuleEntity(
+        id = 7, name = "mixed", triggerLogic = logic,
+        triggers = TriggerDef.listToJson(listOf(steering, newButtonPressTrigger(1))),
+        actions = ActionDef.listToJson(listOf(ActionDef("车窗关闭", "Close windows"))),
+    )
+
+    // Field report 2026-10-01: a rule with a steering key AND a widget button (ANY) did not fire
+    // from the steering key.
+    @Test fun `steering key fires a rule that also has a widget button trigger (OR)`() = runBlocking {
+        val (engine, _, dispatcher) = setup(listOf(mixedRule("OR")))
+        assertEquals(setOf(303), awaitKeyCodes(engine, setOf(303)))
+        assertEquals(1, engine.onSteeringKey(303))
+        coVerify(exactly = 1) { dispatcher.dispatch(any(), any()) }
+    }
+
+    @Test fun `widget button fires a rule that also has a steering key trigger (OR)`() = runBlocking {
+        val (engine, _, dispatcher) = setup(listOf(mixedRule("OR")))
+        assertEquals(1, engine.onButtonPress(1))
+        coVerify(exactly = 1) { dispatcher.dispatch(any(), any()) }
+    }
+
+    @Test fun `steering key fires a mixed rule under AND too`() = runBlocking {
+        val (engine, _, dispatcher) = setup(listOf(mixedRule("AND")))
+        assertEquals(1, engine.onSteeringKey(303))
+        coVerify(exactly = 1) { dispatcher.dispatch(any(), any()) }
+    }
+
+    @Test fun `long-press steering trigger fires only on a long press`() = runBlocking {
+        val (engine, _, dispatcher) = setup(listOf(mixedRule("OR", LongPress.set(steeringKeyTrigger(303), true))))
+        assertEquals(0, engine.onSteeringKey(303, long = false))
+        assertEquals(1, engine.onSteeringKey(303, long = true))
+        coVerify(exactly = 1) { dispatcher.dispatch(any(), any()) }
+    }
+
     // A trigger added from the menu starts at keycode 0 ("not assigned"): it must claim no key
     // until the user learns one, otherwise the a11y filter would swallow KEYCODE_UNKNOWN.
     @Test fun `an unassigned trigger claims no keycode`() = runBlocking {
