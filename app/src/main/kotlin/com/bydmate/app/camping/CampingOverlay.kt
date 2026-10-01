@@ -38,7 +38,7 @@ class CampingOverlay(
     private val onStop: () -> Unit,
 ) {
     private val appContext = context.applicationContext
-    private val text = appContext.appLocalizedContext()
+    private val strings = appContext.appLocalizedContext()
     private val handler = Handler(Looper.getMainLooper())
     private val hidePanel = Runnable { setPanelVisible(false) }
 
@@ -184,7 +184,7 @@ class CampingOverlay(
             isClickable = true
         }
         column.addView(TextView(appContext).apply {
-            setText(text.getString(R.string.camping_overlay_title))
+            setText(strings.getString(R.string.camping_overlay_title))
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
             gravity = Gravity.CENTER
@@ -199,7 +199,7 @@ class CampingOverlay(
         column.addView(status)
         column.addView(stopButton(), LinearLayout.LayoutParams(dp(360), dp(72)))
         column.addView(Button(appContext).apply {
-            setText(text.getString(R.string.camping_overlay_keep_dark))
+            setText(strings.getString(R.string.camping_overlay_keep_dark))
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             isAllCaps = false
@@ -214,7 +214,7 @@ class CampingOverlay(
     }
 
     private fun stopButton(): Button = Button(appContext).apply {
-        setText(text.getString(R.string.camping_stop))
+        setText(strings.getString(R.string.camping_stop))
         setTextColor(Color.WHITE)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
         isAllCaps = false
